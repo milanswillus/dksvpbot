@@ -30,10 +30,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Hallo {user}! Ich helfe dir, deine Klassen zu verwalten.\n\n"
-             "Nutze /betreten <Klasse>, um einer Klasse beizutreten.\n"
-             "Nutze /verlassen <Klasse>, um eine Klasse zu verlassen.\n"
-             "Nutze /meineklassen, um deine Liste zu sehen."
+        text=f"Hallo {user}! I help you manage your school classes.\n\n"
+             "Use /add <class> to join a class.\n"
+             "Use /remove <class> to leave a class.\n"
+             "Use /classes to see your list.\n"
+             "Use /reset to refresh your data."
     )
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -41,7 +42,7 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Bitte gib einen Klassennamen an. Beispiel: /hinzufuegen 11b"
+            text="Please specify a class. Example: /add 11b"
         )
         return
 
@@ -51,12 +52,12 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if storage.add_class(chat_id, class_name):
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Klasse hinzugefügt: {class_name}"
+            text=f"Class added: {class_name}"
         )
     else:
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Du bist bereits in der Klasse: {class_name}"
+            text=f"You are already in class: {class_name}"
         )
 
 async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,7 +65,7 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Bitte gib einen Klassennamen an. Beispiel: /entfernen 11b"
+            text="Please specify a class. Example: /remove 11b"
         )
         return
 
@@ -74,12 +75,12 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if storage.remove_class(chat_id, class_name):
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Klasse entfernt: {class_name}"
+            text=f"Class removed: {class_name}"
         )
     else:
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Du bist nicht in der Klasse: {class_name}"
+            text=f"You are not in class: {class_name}"
         )
 
 async def classes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -91,12 +92,12 @@ async def classes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         classes_str = "\n".join(f"- {c}" for c in user_classes)
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Deine Klassen:\n{classes_str}"
+            text=f"Your classes:\n{classes_str}"
         )
     else:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Du hast noch keine Klassen. Nutze /hinzufuegen, um eine hinzuzufügen."
+            text="You have no classes yet. Use /add to add one."
         )
 
 async def reset_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -105,10 +106,38 @@ async def reset_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_version = storage.increment_reset_version(chat_id)
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"Deine Daten wurden zurückgesetzt (Version {new_version}). Beim nächsten Update erhältst du alle aktuellen Änderungen erneut."
+        text=f"Data reset (Version {new_version}). You will receive all current updates again on the next check."
     )
 
-async def check_updates(context: ContextTypes.DEFAULT_TYPE):
+# ... (check_updates and manual_update remain mostly same but messages could be english too? User said commands, implying interface)
+
+async def manual_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Triggers a manual update check."""
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="Checking for updates..."
+    )
+    await check_updates(context)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="Check completed."
+    )
+
+def main():
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token or token.startswith("123456"):
+        print("Error: TELEGRAM_BOT_TOKEN is not set properly.")
+        return
+
+    application = ApplicationBuilder().token(token).build()
+    
+    # Commands
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('add', add))
+    application.add_handler(CommandHandler('remove', remove))
+    application.add_handler(CommandHandler('classes', classes))
+    application.add_handler(CommandHandler('update', manual_update))
+    application.add_handler(CommandHandler('reset', reset_data))
     """Periodic job to check for updates on the school website."""
     logging.info("Checking for updates...")
     state = load_state()
@@ -290,11 +319,11 @@ def main():
     
     # Commands
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('betreten', add))
-    application.add_handler(CommandHandler('verlassen', remove))
-    application.add_handler(CommandHandler('meineklassen', classes))
+    application.add_handler(CommandHandler('add', add))
+    application.add_handler(CommandHandler('remove', remove))
+    application.add_handler(CommandHandler('classes', classes))
     application.add_handler(CommandHandler('update', manual_update))
-    application.add_handler(CommandHandler('resetdata', reset_data))
+    application.add_handler(CommandHandler('reset', reset_data))
     
     # Scraping Job
     # Check every 60 minutes (3600 seconds)

@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Student Bot (DKS VP)
+After=network.target
+
+[Service]
+# CHANGE THIS TO YOUR USER AND PATHS IF DIFFERENT
+User=milxn
+WorkingDirectory=/home/milxn/dksvpbot
+# Use the python executable from the virtual environment
+ExecStart=/home/milxn/dksvpbot/venv/bin/python bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

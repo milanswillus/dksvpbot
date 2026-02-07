@@ -203,21 +203,48 @@ async def check_updates(context: ContextTypes.DEFAULT_TYPE):
                         subject_mapping = {
                             "PH": "Physik", "MA": "Mathe", "KU": "Kunst", "EN": "Englisch",
                             "FR": "Französisch", "MU": "Musik", "SPO": "Sport", "ETH": "Ethik",
-                            "DE": "Deutsch", "GE": "Geschichte", "GEO": "Geografie",
-                            "CH": "Chemie", "INF": "Informatik", "GRW": "GRW"
+                            "DE": "Deutsch", "GE": "Geschichte", "GEO": "Geo",
+                            "CH": "Chemie", "INF": "Info", "GRW": "GRW", "BIO": "Bio",
+                            "FÖ": "Förderung"
                         }
-                        raw_subject = info.split()[0]
-                        match_subj = re.search(r'([a-zA-Z]+)', raw_subject)
-                        if match_subj:
-                            abbr = match_subj.group(1).upper()
-                            subject_name = subject_mapping.get(abbr, re.sub(r'\d+$', '', raw_subject))
-                        else:
-                            subject_name = raw_subject
+                        
+                        # Improved Subject Detection
+                        detected_subject = None
 
-                        if "verlegt" in info.lower() or "verschoben" in info.lower():
-                             meme_text = f"Am {Wochentag} {subject_name} verschoben"
+                        # 1. Try to find a known subject in the 'Info' string specifically if it's a cancellation
+                        if "fällt aus" in info.lower():
+                            # Find all uppercase words of length 2-3 (e.g. BIO, MA, DE)
+                            words = re.findall(r'\b[A-Z]{2,3}\b', info)
+                            for word in words:
+                                if word in subject_mapping:
+                                    detected_subject = subject_mapping[word]
+                                    break
+                        
+                        # 2. If not found in Info, use the 'Fach' column if it's valid (not ---)
+                        if not detected_subject and fach and "--" not in fach:
+                             match_subj = re.search(r'([a-zA-Z]+)', fach)
+                             if match_subj:
+                                 abbr = match_subj.group(1).upper()
+                                 detected_subject = subject_mapping.get(abbr, fach)
+
+                        # 3. Fallback: Parse first word of Info (for rows like "---" where info is "BIO fällt aus")
+                        if not detected_subject:
+                            raw_subject = info.split()[0]
+                            match_subj = re.search(r'([a-zA-Z]+)', raw_subject)
+                            if match_subj:
+                                abbr = match_subj.group(1).upper()
+                                detected_subject = subject_mapping.get(abbr, re.sub(r'\d+$', '', raw_subject))
+                            else:
+                                detected_subject = raw_subject
+
+                        # Determine Meme Text
+                        # Prioritize Cancellation if "fällt aus" is in info
+                        if "fällt aus" in info.lower():
+                             meme_text = f"am {Wochentag} kein {detected_subject}"
+                        elif "verlegt" in info.lower() or "verschoben" in info.lower():
+                             meme_text = f"Am {Wochentag} {detected_subject} verschoben"
                         else:
-                             meme_text = f"am {Wochentag} kein {subject_name}"
+                             meme_text = f"am {Wochentag} kein {detected_subject}"
                         
                         logging.info(f"Generiere Meme für: {meme_text}")
                         

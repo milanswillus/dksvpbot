@@ -67,11 +67,11 @@ def create_meme(video_id: int, text: str):
 
         txt_clip = TextClip(
             text,
-            fontsize=70,             
+            fontsize=50,             
             color='white',
-            font='Arial-Bold',
+            font='DejaVu-Sans-Bold',
             stroke_color='black',
-            stroke_width=6,
+            stroke_width=2,
             method='caption',
             size=(target_width * upscale_factor, None),
             align='Center'

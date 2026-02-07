@@ -31,9 +31,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f"Hallo {user}! Ich helfe dir, deine Klassen zu verwalten.\n\n"
-             "Nutze /hinzufuegen <Klasse>, um einer Klasse beizutreten.\n"
-             "Nutze /entfernen <Klasse>, um eine Klasse zu verlassen.\n"
-             "Nutze /klassen, um deine Liste zu sehen."
+             "Nutze /betreten <Klasse>, um einer Klasse beizutreten.\n"
+             "Nutze /verlassen <Klasse>, um eine Klasse zu verlassen.\n"
+             "Nutze /meineklassen, um deine Liste zu sehen."
     )
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -187,7 +187,7 @@ async def check_updates(context: ContextTypes.DEFAULT_TYPE):
                         continue
                     
                     # Decide: Meme or Text
-                    if info and (("fällt aus" in info.lower()) or fach == "---"):
+                    if info and (("fällt aus" in info.lower()) or "--" in fach):
                         subject_mapping = {
                             "PH": "Physik", "MA": "Mathe", "KU": "Kunst", "EN": "Englisch",
                             "FR": "Französisch", "MU": "Musik", "SPO": "Sport", "ETH": "Ethik",

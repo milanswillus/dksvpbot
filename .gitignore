@@ -1,0 +1,29 @@
+
+# User Data
+data.json
+state.json
+template_counter.txt
+
+# Secrets
+.env
+password_dksvpbot.png
+
+# System/IDE
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+
+# Environment
+.venv/
+env/
+venv/
+
+# Output
+output/
+*.log
+
+# Personal Guides
+RASPBERRY_PI_SETUP.md
+requirements copy.txt

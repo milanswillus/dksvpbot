@@ -5,8 +5,8 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 # Import modules
 from config import USER_VPLAN, PASSWORD_VPLAN
@@ -25,16 +25,107 @@ logging.basicConfig(
 
 Wochentage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
 
+def matches_class(user_class: str, cell_value: str) -> bool:
+    """Checks if a user's class subscription matches the cell value in the substitution plan."""
+    user_class = user_class.strip().lower()
+    cell_value = cell_value.strip().lower()
+    
+    if not user_class or not cell_value:
+        return False
+        
+    if user_class == cell_value:
+        return True
+        
+    # Split by comma first (e.g. "5a, 5b, 6d" -> ["5a", "5b", "6d"])
+    parts = [p.strip() for p in cell_value.split(',')]
+    for part in parts:
+        if user_class == part:
+            return True
+            
+        # Also split by slash (e.g. "JG11/ 11PH1" -> ["jg11", "11ph1"])
+        subparts = [sp.strip() for sp in part.split('/')]
+        if user_class in subparts:
+            return True
+            
+        # Check if user is subscribed to a course starting with '11' or '12' 
+        # and the notice is for the general year group 'jg11' / 'jg12'
+        if user_class.startswith("11") and part == "jg11":
+            return True
+        if user_class.startswith("12") and part == "jg12":
+            return True
+            
+    return False
+
+def scrape_available_courses() -> list:
+    """Fallback to dynamically scrape available courses from dksdd.de."""
+    courses = set()
+    for day in Wochentage:
+        url = f"https://dksdd.de/vtp/{day}.html"
+        try:
+            r = requests.get(url, auth=(USER_VPLAN, PASSWORD_VPLAN))
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.content, 'html.parser')
+                for tr in soup.find_all('tr'):
+                    tds = tr.find_all('td')
+                    if tds:
+                        val = tds[0].text.strip()
+                        if val.startswith("JG11/") or val.startswith("JG12/"):
+                            parts = [p.strip() for p in val.split('/')]
+                            if len(parts) > 1 and parts[1]:
+                                courses.add(parts[1])
+        except Exception as e:
+            logging.error(f"Error scraping courses for {day}: {e}")
+    return sorted(list(courses))
+
+def get_available_courses() -> list:
+    """Returns the list of available courses from cached state or scraped dynamically."""
+    state = load_state()
+    courses = state.get("discovered_courses", [])
+    if not courses:
+        courses = scrape_available_courses()
+    return courses
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends a welcome message."""
+    """Sends a welcome message and prompts for stufe (level)."""
+    chat_id = update.effective_chat.id
     user = update.effective_user.first_name
+    
     await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Hallo {user}! I help you manage your school classes.\n\n"
-             "Use /add <class> to join a class.\n"
-             "Use /remove <class> to leave a class.\n"
-             "Use /classes to see your list.\n"
-             "Use /reset to refresh your data."
+        chat_id=chat_id,
+        text=f"Hallo {user}! Ich helfe dir, deinen Vertretungsplan zu verwalten.\n\n"
+             "Nutze /stufe um deine Klassenstufe zu ändern.\n"
+             "Nutze /klassen um deine Klassen/Kurse anzuzeigen und zu verwalten.\n"
+             "Nutze /zuruecksetzen um deine Benachrichtigungen zurückzusetzen.\n\n"
+             "Bitte richte zuerst deine Stufe ein:"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("Mittelstufe (5-10)", callback_data="stufe_Mittelstufe"),
+            InlineKeyboardButton("Oberstufe (Abitur)", callback_data="stufe_Oberstufe")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Welche Stufe besuchst du?",
+        reply_markup=reply_markup
+    )
+
+async def stufe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Prompts the user to change their level."""
+    chat_id = update.effective_chat.id
+    keyboard = [
+        [
+            InlineKeyboardButton("Mittelstufe (5-10)", callback_data="stufe_Mittelstufe"),
+            InlineKeyboardButton("Oberstufe (Abitur)", callback_data="stufe_Oberstufe")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Welche Stufe besuchst du? (Achtung: Dies setzt deine bisherigen Klassen zurück!)",
+        reply_markup=reply_markup
     )
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -42,7 +133,7 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Please specify a class. Example: /add 11b"
+            text="Bitte gib eine Klasse/einen Kurs an. Beispiel: /hinzufuegen 11b"
         )
         return
 
@@ -52,12 +143,12 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if storage.add_class(chat_id, class_name):
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Class added: {class_name}"
+            text=f"Klasse/Kurs hinzugefügt: {class_name}"
         )
     else:
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"You are already in class: {class_name}"
+            text=f"Du bist bereits in Klasse/Kurs: {class_name}"
         )
 
 async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,7 +156,7 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Please specify a class. Example: /remove 11b"
+            text="Bitte gib eine Klasse/einen Kurs an. Beispiel: /entfernen 11b"
         )
         return
 
@@ -75,29 +166,267 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if storage.remove_class(chat_id, class_name):
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Class removed: {class_name}"
+            text=f"Klasse/Kurs entfernt: {class_name}"
         )
     else:
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"You are not in class: {class_name}"
+            text=f"Du bist nicht in Klasse/Kurs: {class_name}"
         )
 
 async def classes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lists the user's classes."""
     chat_id = update.effective_chat.id
-    user_classes = storage.get_student_classes(chat_id)
+    stufe = storage.get_student_stufe(chat_id)
     
-    if user_classes:
-        classes_str = "\n".join(f"- {c}" for c in user_classes)
+    if not stufe:
+        keyboard = [
+            [
+                InlineKeyboardButton("Mittelstufe (5-10)", callback_data="stufe_Mittelstufe"),
+                InlineKeyboardButton("Oberstufe (Abitur)", callback_data="stufe_Oberstufe")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Your classes:\n{classes_str}"
+            text="Bitte richte zuerst deine Stufe ein, um deine Klassen/Kurse zu verwalten:",
+            reply_markup=reply_markup
         )
-    else:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="You have no classes yet. Use /add to add one."
+        return
+        
+    user_classes = storage.get_student_classes(chat_id)
+    if stufe == "Mittelstufe":
+        class_text = user_classes[0] if user_classes else "keine Klasse ausgewählt"
+        text = f"Deine aktuelle Klasse: {class_text}"
+        keyboard = [[InlineKeyboardButton("Klasse ändern / auswählen", callback_data="menu_mittel_grades")]]
+    else: # Oberstufe
+        if user_classes:
+            classes_str = "\n".join(f"- {c}" for c in user_classes)
+            text = f"Deine abonnierten Kurse:\n{classes_str}"
+        else:
+            text = "Du hast noch keine Kurse abonniert."
+        keyboard = [
+            [
+                InlineKeyboardButton("Kurse verwalten (JG 11)", callback_data="menu_ober_jg11"),
+                InlineKeyboardButton("Kurse verwalten (JG 12)", callback_data="menu_ober_jg12")
+            ]
+        ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        reply_markup=reply_markup
+    )
+
+async def show_mittel_grades(query):
+    keyboard = [
+        [
+            InlineKeyboardButton("Klasse 5", callback_data="menu_mittel_letters:5"),
+            InlineKeyboardButton("Klasse 6", callback_data="menu_mittel_letters:6")
+        ],
+        [
+            InlineKeyboardButton("Klasse 7", callback_data="menu_mittel_letters:7"),
+            InlineKeyboardButton("Klasse 8", callback_data="menu_mittel_letters:8")
+        ],
+        [
+            InlineKeyboardButton("Klasse 9", callback_data="menu_mittel_letters:9"),
+            InlineKeyboardButton("Klasse 10", callback_data="menu_mittel_letters:10")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text="Wähle deine Klassenstufe (Mittelstufe):",
+        reply_markup=reply_markup
+    )
+
+async def show_mittel_letters(query, grade):
+    letters = ["a", "b", "c", "d", "e"]
+    keyboard = []
+    row = []
+    for l in letters:
+        class_name = f"{grade}{l}"
+        row.append(InlineKeyboardButton(class_name, callback_data=f"set_class:{class_name}"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Zurück", callback_data="menu_mittel_grades")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text=f"Wähle deine Klasse für Stufe {grade}:",
+        reply_markup=reply_markup
+    )
+
+async def show_ober_jg_selection(query):
+    keyboard = [
+        [
+            InlineKeyboardButton("Jahrgang 11", callback_data="menu_ober_jg11"),
+            InlineKeyboardButton("Jahrgang 12", callback_data="menu_ober_jg12")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text="Wähle deinen Jahrgang (Oberstufe):",
+        reply_markup=reply_markup
+    )
+
+async def show_ober_courses(query, jg):
+    chat_id = query.message.chat_id
+    user_classes = storage.get_student_classes(chat_id)
+    available_courses = get_available_courses()
+    
+    jg_courses = [c for c in available_courses if c.startswith(jg)]
+    user_jg_courses = [c for c in user_classes if c.startswith(jg)]
+    all_jg_courses = sorted(list(set(jg_courses + user_jg_courses)))
+    
+    keyboard = []
+    row = []
+    for course in all_jg_courses:
+        is_subbed = course in user_classes
+        label = f"✅ {course}" if is_subbed else course
+        row.append(InlineKeyboardButton(label, callback_data=f"toggle_course:{course}:{jg}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+        
+    keyboard.append([
+        InlineKeyboardButton("➕ Kurs manuell eingeben", callback_data="enter_course_manual")
+    ])
+    keyboard.append([
+        InlineKeyboardButton("⬅️ Zurück", callback_data="menu_ober_jg_selection"),
+        InlineKeyboardButton("Fertig 🏁", callback_data="done")
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text=f"Klicke auf deine Kurse für Jahrgang {jg}, um sie zu abonnieren/abzubestellen:",
+        reply_markup=reply_markup
+    )
+
+async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles inline keyboard button presses."""
+    query = update.callback_query
+    await query.answer()
+    
+    chat_id = query.message.chat_id
+    data = query.data
+    
+    if data.startswith("stufe_"):
+        selected_stufe = data.split("_")[1]
+        storage.set_student_stufe(chat_id, selected_stufe, clear_classes=True)
+        
+        if selected_stufe == "Mittelstufe":
+            await show_mittel_grades(query)
+        else:
+            await show_ober_jg_selection(query)
+            
+    elif data == "menu_mittel_grades":
+        await show_mittel_grades(query)
+        
+    elif data.startswith("menu_mittel_letters:"):
+        grade = data.split(":")[1]
+        await show_mittel_letters(query, grade)
+        
+    elif data.startswith("set_class:"):
+        class_name = data.split(":")[1]
+        storage.set_student_stufe(chat_id, "Mittelstufe", clear_classes=True)
+        storage.add_class(chat_id, class_name)
+        
+        await query.edit_message_text(
+            text=f"Klasse {class_name} wurde erfolgreich eingerichtet! Du erhältst ab jetzt Benachrichtigungen für diese Klasse."
+        )
+        
+    elif data == "menu_ober_jg_selection":
+        await show_ober_jg_selection(query)
+        
+    elif data.startswith("menu_ober_jg"):
+        jg = data.replace("menu_ober_jg", "")
+        await show_ober_courses(query, jg)
+        
+    elif data.startswith("toggle_course:"):
+        parts = data.split(":")
+        course = parts[1]
+        jg = parts[2]
+        
+        user_classes = storage.get_student_classes(chat_id)
+        if course in user_classes:
+            storage.remove_class(chat_id, course)
+        else:
+            storage.add_class(chat_id, course)
+            
+        await show_ober_courses(query, jg)
+        
+    elif data == "enter_course_manual":
+        context.user_data["waiting_for_course"] = True
+        await query.edit_message_text(
+            text="Bitte gib den Kursnamen manuell ein (z.B. '11ku2' oder '12ENG1') und sende die Nachricht:"
+        )
+        
+    elif data == "done":
+        user_classes = storage.get_student_classes(chat_id)
+        if user_classes:
+            classes_str = "\n".join(f"- {c}" for c in user_classes)
+            await query.edit_message_text(
+                text=f"Einrichtung abgeschlossen! Deine abonnierten Kurse:\n{classes_str}"
+            )
+        else:
+            await query.edit_message_text(
+                text="Einrichtung abgeschlossen! Du hast derzeit keine Kurse abonniert."
+            )
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles text messages (e.g. when typing a course name manually)."""
+    chat_id = update.effective_chat.id
+    if context.user_data.get("waiting_for_course"):
+        course_name = update.message.text.strip()
+        
+        if not course_name:
+            await update.message.reply_text("Ungültiger Kursname. Bitte erneut versuchen:")
+            return
+            
+        storage.add_class(chat_id, course_name)
+        context.user_data["waiting_for_course"] = False
+        
+        jg = "12" if course_name.startswith("12") else "11"
+            
+        await update.message.reply_text(f"Kurs '{course_name}' hinzugefügt!")
+        
+        # Send fresh menu
+        user_classes = storage.get_student_classes(chat_id)
+        available_courses = get_available_courses()
+        jg_courses = [c for c in available_courses if c.startswith(jg)]
+        user_jg_courses = [c for c in user_classes if c.startswith(jg)]
+        all_jg_courses = sorted(list(set(jg_courses + user_jg_courses)))
+        
+        keyboard = []
+        row = []
+        for course in all_jg_courses:
+            is_subbed = course in user_classes
+            label = f"✅ {course}" if is_subbed else course
+            row.append(InlineKeyboardButton(label, callback_data=f"toggle_course:{course}:{jg}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+            
+        keyboard.append([
+            InlineKeyboardButton("➕ Kurs manuell eingeben", callback_data="enter_course_manual")
+        ])
+        keyboard.append([
+            InlineKeyboardButton("⬅️ Zurück", callback_data="menu_ober_jg_selection"),
+            InlineKeyboardButton("Fertig 🏁", callback_data="done")
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            text=f"Deine Kurse für Jahrgang {jg}:",
+            reply_markup=reply_markup
         )
 
 async def reset_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,7 +435,7 @@ async def reset_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_version = storage.increment_reset_version(chat_id)
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"Data reset (Version {new_version}). You will receive all current updates again on the next check."
+        text=f"Daten zurückgesetzt (Version {new_version}). Du erhältst alle aktuellen Benachrichtigungen beim nächsten Check erneut."
     )
 
 async def check_updates(context: ContextTypes.DEFAULT_TYPE):
@@ -139,6 +468,19 @@ async def check_updates(context: ContextTypes.DEFAULT_TYPE):
 
         soup = BeautifulSoup(html_content, "html.parser")
         
+        # Collect Oberstufe courses from this day's plan
+        discovered_courses = set(state.get("discovered_courses", []))
+        for tr in soup.find_all("tr"):
+            tds = tr.find_all("td")
+            if tds:
+                val = tds[0].text.strip()
+                if val.startswith("JG11/") or val.startswith("JG12/"):
+                    parts = [p.strip() for p in val.split('/')]
+                    if len(parts) > 1 and parts[1]:
+                        discovered_courses.add(parts[1])
+        state["discovered_courses"] = sorted(list(discovered_courses))
+        state_changed = True
+        
         datum_span = soup.find('span', class_='vpfuerdatum')
         if not datum_span:
             continue
@@ -165,18 +507,17 @@ async def check_updates(context: ContextTypes.DEFAULT_TYPE):
             except ValueError:
                 continue
 
+            rows = soup.find_all("tr")
             for Klasse in Klassen:
-                klasse_elements = soup.find_all("td", string=Klasse)
+                matching_rows = []
+                for tr in rows:
+                    tds = tr.find_all("td")
+                    if tds and len(tds) >= 6:
+                        if matches_class(Klasse, tds[0].text.strip()):
+                            matching_rows.append(tr)
 
-                if not klasse_elements:
-                    continue
-
-                for idx, klasse_element in enumerate(klasse_elements):
-                    tr_klasse = klasse_element.find_parent("tr")
+                for idx, tr_klasse in enumerate(matching_rows):
                     zellen_inhalte = [td.text.strip() for td in tr_klasse.find_all("td")]
-
-                    if len(zellen_inhalte) < 6:
-                         continue
 
                     stunde = zellen_inhalte[1]
                     fach = zellen_inhalte[2]
@@ -281,12 +622,12 @@ async def manual_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Triggers a manual update check."""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Checking for updates..."
+        text="Prüfe auf Updates..."
     )
     await check_updates(context)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Check completed."
+        text="Prüfung abgeschlossen."
     )
 
 def main():
@@ -299,11 +640,16 @@ def main():
     
     # Commands
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('add', add))
-    application.add_handler(CommandHandler('remove', remove))
-    application.add_handler(CommandHandler('classes', classes))
-    application.add_handler(CommandHandler('update', manual_update))
-    application.add_handler(CommandHandler('reset', reset_data))
+    application.add_handler(CommandHandler('stufe', stufe_command))
+    application.add_handler(CommandHandler('hinzufuegen', add))
+    application.add_handler(CommandHandler('entfernen', remove))
+    application.add_handler(CommandHandler('klassen', classes))
+    application.add_handler(CommandHandler('aktualisieren', manual_update))
+    application.add_handler(CommandHandler('zuruecksetzen', reset_data))
+    
+    # Callback query and message handlers
+    application.add_handler(CallbackQueryHandler(button_click))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
     # Scraping Job
     job_queue = application.job_queue

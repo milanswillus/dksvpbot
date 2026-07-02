@@ -27,13 +27,34 @@ def save_data(data):
 def _get_user_entry(data, chat_id_str):
     """Helper to get user entry, migrating list to dict if necessary."""
     if chat_id_str not in data:
-        return {"classes": [], "version": 0}
+        return {"classes": [], "version": 0, "stufe": None}
     
     entry = data[chat_id_str]
     if isinstance(entry, list):
         # Migration: convert list to dict
-        return {"classes": entry, "version": 0}
+        return {"classes": entry, "version": 0, "stufe": None}
+    
+    if "stufe" not in entry:
+        entry["stufe"] = None
+        
     return entry
+
+def get_student_stufe(chat_id: Union[str, int]) -> Union[str, None]:
+    """Returns the level (stufe) of the student."""
+    data = load_data()
+    entry = _get_user_entry(data, str(chat_id))
+    return entry.get("stufe")
+
+def set_student_stufe(chat_id: Union[str, int], stufe: str, clear_classes: bool = False):
+    """Sets the level (stufe) of the student and optionally clears classes."""
+    data = load_data()
+    chat_id_str = str(chat_id)
+    entry = _get_user_entry(data, chat_id_str)
+    entry["stufe"] = stufe
+    if clear_classes:
+        entry["classes"] = []
+    data[chat_id_str] = entry
+    save_data(data)
 
 def get_student_classes(chat_id: Union[str, int]) -> List[str]:
     """Returns the list of classes for a given chat_id."""

@@ -1,9 +1,14 @@
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # --- KONFIGURATION ---
-TOKEN = "PLACEHOLDER_TOKEN"
-USER_VPLAN = 'vplan'
-PASSWORD_VPLAN = 'PLACEHOLDER_PASSWORD'
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+USER_VPLAN = os.getenv("USER_VPLAN", "vplan")
+PASSWORD_VPLAN = os.getenv("PASSWORD_VPLAN")
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "templates"

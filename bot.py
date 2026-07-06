@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 # Import modules
-from config import USER_VPLAN, PASSWORD_VPLAN
+from config import USER_VPLAN, PASSWORD_VPLAN, BASE_DIR
 import storage
 from state_manager import load_state, save_state, calculate_hash
 from meme_handler import create_meme, get_next_template_id
@@ -78,7 +78,23 @@ def scrape_available_courses() -> list:
     return sorted(list(courses))
 
 def get_available_courses() -> list:
-    """Returns the list of available courses from cached state or scraped dynamically."""
+    """Returns the list of available courses from faecher.txt, or falls back to cached state/scraping."""
+    faecher_file = BASE_DIR / "faecher.txt"
+    if faecher_file.exists():
+        try:
+            courses = []
+            with open(faecher_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        courses.append(line)
+            if courses:
+                # Retain file order in a stable unique list
+                seen = set()
+                return [x for x in courses if not (x in seen or seen.add(x))]
+        except Exception as e:
+            logging.error(f"Error reading faecher.txt: {e}")
+
     state = load_state()
     courses = state.get("discovered_courses", [])
     if not courses:
@@ -280,7 +296,13 @@ async def show_ober_courses(query, jg):
     
     jg_courses = [c for c in available_courses if c.startswith(jg)]
     user_jg_courses = [c for c in user_classes if c.startswith(jg)]
-    all_jg_courses = sorted(list(set(jg_courses + user_jg_courses)))
+    
+    # Sort according to the order in available_courses (faecher.txt order)
+    course_order = {course: index for index, course in enumerate(available_courses)}
+    all_jg_courses = sorted(
+        list(set(jg_courses + user_jg_courses)),
+        key=lambda c: (course_order.get(c, len(available_courses)), c)
+    )
     
     keyboard = []
     row = []
@@ -401,7 +423,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         available_courses = get_available_courses()
         jg_courses = [c for c in available_courses if c.startswith(jg)]
         user_jg_courses = [c for c in user_classes if c.startswith(jg)]
-        all_jg_courses = sorted(list(set(jg_courses + user_jg_courses)))
+        
+        # Sort according to the order in available_courses (faecher.txt order)
+        course_order = {course: index for index, course in enumerate(available_courses)}
+        all_jg_courses = sorted(
+            list(set(jg_courses + user_jg_courses)),
+            key=lambda c: (course_order.get(c, len(available_courses)), c)
+        )
         
         keyboard = []
         row = []

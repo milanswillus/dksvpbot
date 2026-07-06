@@ -1,0 +1,157 @@
+# Fächerliste für den Telegram-Bot
+# Du kannst diese Datei bearbeiten (Zeilen hinzufügen, löschen oder ändern).
+# Leerzeilen und Zeilen, die mit '#' beginnen, werden ignoriert.
+
+# --- JAHRGANG 11 ---
+# Deutsch
+11DE1
+11DE2
+11de1
+11de2
+
+# Englisch
+11EN1
+11EN2
+11en1
+11en2
+
+# Mathe
+11MA1
+11MA2
+11ma1
+11ma2
+
+# Physik
+11PH1
+11ph1
+11ph2
+
+# Chemie
+11ch1
+11ch2
+
+# Biologie
+11BIO1
+11bio1
+11bio2
+
+# Geschichte
+11GE1
+11ge1
+11ge2
+
+# Kunst
+11KU1
+11ku1
+11ku2
+
+# Musik
+11mu1
+11mu2
+
+# Ethik / Religion
+11eth1
+11eth2
+11rel1
+11rel2
+
+# Sport
+11spo1
+11spo2
+
+# Geographie
+11geo1
+11geo2
+
+# Informatik
+11inf1
+11inf2
+
+# GRW (Gemeinschaftskunde)
+11grw1
+11grw2
+
+# Französisch
+11fr1
+11fr2
+
+# Latein
+11la1
+11la2
+
+# --- JAHRGANG 12 ---
+# Deutsch
+12DE1
+12DE2
+12de1
+12de2
+
+# Englisch
+12EN1
+12EN2
+12en1
+12en2
+
+# Mathe
+12MA1
+12MA2
+12ma1
+12ma2
+
+# Physik
+12PH1
+12ph1
+12ph2
+
+# Chemie
+12ch1
+12ch2
+
+# Biologie
+12BIO1
+12bio1
+12bio2
+
+# Geschichte
+12GE1
+12ge1
+12ge2
+
+# Kunst
+12ku1
+12ku2
+
+# Musik
+12mu1
+12mu2
+
+# Ethik / Religion
+12eth1
+12eth2
+12rel1
+12rel2
+
+# Sport
+12spo1
+12spo2
+
+# Geographie
+12geo1
+12geo2
+
+# Informatik
+12inf1
+12inf2
+
+# GRW (Gemeinschaftskunde)
+12grw1
+12grw2
+
+# Französisch
+12fr1
+12fr2
+
+# Latein
+12la1
+12la2
+
